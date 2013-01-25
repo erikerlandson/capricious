@@ -63,30 +63,40 @@ module Capricious
       dirty!
     end
 
+    # add data to use for splining
+    # supported formats include:
+    # [x,y]
+    # [[x,y], [x,y], ...]
+    # { x=>y,  x=>y, ... }
     def <<(data)
       enter(canonical(data))
       self
     end
 
+    # synonym for << operator above
     def put(data)
       enter(canonical(data))
       nil
     end
 
+    # returns true if spline structures out of sync with current data entered
     def dirty?
       not @ypp or @ypp.length != @h.length
     end
 
+    # return array of x values, as used by the spline algorithm
     def x
       recompute if dirty?
       @x
     end
 
+    # return array of y values, as used by the spline algorithm
     def y
       recompute if dirty?
       @y
     end
 
+    # return array of y'' values, as used by the spline algorithm
     def ypp
       recompute if dirty?
       @ypp
@@ -119,6 +129,7 @@ module Capricious
       a*@ypp[jlo] + b*@ypp[jhi]
     end
 
+    # explicitly invoke recomputation of spline structures
     def recompute
       return if not dirty?
 
@@ -128,6 +139,7 @@ module Capricious
 
       # compute 2nd derivative vector
       compute_ypp
+      nil
     end
 
     private
