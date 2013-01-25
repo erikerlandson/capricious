@@ -16,7 +16,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-require './cubic_spline'
+require 'capricious/cubic_spline'
 
 module Capricious
 
@@ -26,18 +26,27 @@ module Capricious
     # use an exponential tail to get infinite lower or upper bound for cdf
     INF = 'inf'
 
-    attr_reader :spline
 
-    def initialize(data, args_={})
-      args = {:cdf_lb => SPLINE, :cdf_ub => SPLINE, :cdf_smooth_lb => true, :cdf_smooth_ub => true, :cdf_quantile => 0.05}.merge(args_)
+    def initialize(args={})
+      reset
+      configure(args)
+    end
 
-      begin
-        raw = data.to_a
-        raw.map! { |e| e.to_f }
-      rescue
-        raise ArgumentError, "failed to acquire data as floating point vector"
-      end
-      raise ArgumentError, "insufficient data, require >= 2 points" if raw.length < 2
+
+    def reset
+      @args = {:data => nil, :cdf_lb => SPLINE, :cdf_ub => SPLINE, :cdf_smooth_lb => true, :cdf_smooth_ub => true, :cdf_quantile => 0.05}
+      clear
+    end
+
+
+    def clear
+      @data = []
+      dirty!
+    end
+
+
+    def configure(args = {})
+      @args.merge!(args)
 
       @cdf_lb = checkba(args[:cdf_lb])
       @cdf_ub = checkba(args[:cdf_ub])
@@ -50,6 +59,73 @@ module Capricious
       rescue
         raise ArgumentError, "cdf_quantile expects numeric > 0 and < 1"
       end
+
+      # if a :data argument was provided, then reset data to that argument
+      if @args[:data] then
+        clear
+        enter(canonical(@args[:data]))
+        # this one needs to be reset to nil - don't want it to persist after this call
+        @args[:data] = nil
+      end
+
+      dirty!
+    end
+
+
+    def <<(data)
+      enter(canonical(data))
+      self
+    end
+
+    def put(data)
+      enter(canonical(data))
+      nil
+    end
+
+
+    def dirty?
+      not @spline
+    end
+
+
+    def cdf(x)
+      recompute if dirty?
+
+      if x < @smin then
+        return Math.exp(x*@exp_lb_a + @exp_lb_b) if @cdf_lb == INF
+        return 0.0
+      end
+      if x > @smax then
+        return 1.0 - Math.exp(@exp_ub_b - x*@exp_ub_a) if @cdf_ub == INF
+        return 1.0
+      end
+
+      @spline.q(x)
+    end
+
+
+    def pdf(x)
+      recompute if dirty?
+
+      # pdf is 1st derivative of the cdf
+      if x < @smin then
+        return @exp_lb_a * Math.exp(x*@exp_lb_a + @exp_lb_b) if @cdf_lb == INF
+        return 0.0
+      end
+      if x > @smax then
+        return @exp_ub_a * Math.exp(@exp_ub_b - x*@exp_ub_a) if @cdf_ub == INF
+        return 0.0
+      end
+
+      @spline.qp(x)
+    end
+
+
+    def recompute
+      return if not dirty?
+
+      raw = @data
+      raise ArgumentError, "insufficient data, require >= 2 points" if raw.length < 2
 
       # if specific bounds were provided, data needs to be
       # strictly inside those bounds
@@ -117,36 +193,40 @@ module Capricious
 
       # cache the valid range of the spline
       @smin, @smax = @spline.domain
+
+      nil
     end
 
-    def cdf(x)
-      if x < @smin then
-        return Math.exp(x*@exp_lb_a + @exp_lb_b) if @cdf_lb == INF
-        return 0.0
-      end
-      if x > @smax then
-        return 1.0 - Math.exp(@exp_ub_b - x*@exp_ub_a) if @cdf_ub == INF
-        return 1.0
-      end
-
-      @spline.q(x)
-    end
-
-    def pdf(x)
-      # pdf is 1st derivative of the cdf
-      if x < @smin then
-        return @exp_lb_a * Math.exp(x*@exp_lb_a + @exp_lb_b) if @cdf_lb == INF
-        return 0.0
-      end
-      if x > @smax then
-        return @exp_ub_a * Math.exp(@exp_ub_b - x*@exp_ub_a) if @cdf_ub == INF
-        return 0.0
-      end
-
-      @spline.qp(x)
-    end
 
     private
+    def canonical(data)
+      d = nil
+      begin
+        case
+          when data.class <= Numeric
+            d = [ data.to_f ]
+          when data.class <= Array
+            d = data
+          else
+            raise ""
+        end
+        d.map! { |e| e.to_f }
+      rescue
+        raise ArgumentError, "failed to acquire data as floating point vector"
+      end
+      d
+    end
+
+    def enter(data)
+      return if data.length <= 0
+      @data += data
+      dirty!
+    end
+
+    def dirty!
+      @spline = nil
+    end
+
     def checkba(v)
        case
          when [SPLINE, INF].include?(v)
