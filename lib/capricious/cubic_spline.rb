@@ -155,10 +155,11 @@ module Capricious
           else
             raise ""
         end
+        d.map!{|p| p.map{|e| e.to_f} }
       rescue
         raise ArgumentError, "failed to acquire data in supported format: [x,y], [[x1,y1], [x2,y2], ...], {x1 => y1, x2 => y2, ...}"
       end
-      d.map!{|p| p.map{|e| e.to_f} }
+      d
     end
 
     # assumes data in canonical format [[x,y],[x,y],...]
