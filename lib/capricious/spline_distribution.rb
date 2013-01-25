@@ -48,13 +48,13 @@ module Capricious
     def configure(args = {})
       @args.merge!(args)
 
-      @cdf_lb = checkba(args[:cdf_lb])
-      @cdf_ub = checkba(args[:cdf_ub])
-      @cdf_smooth_lb = args[:cdf_smooth_lb]
-      @cdf_smooth_ub = args[:cdf_smooth_ub]
+      @cdf_lb = checkba(@args[:cdf_lb])
+      @cdf_ub = checkba(@args[:cdf_ub])
+      @cdf_smooth_lb = @args[:cdf_smooth_lb]
+      @cdf_smooth_ub = @args[:cdf_smooth_ub]
 
       begin
-        @cdf_quantile = args[:cdf_quantile].to_f
+        @cdf_quantile = @args[:cdf_quantile].to_f
         raise "x" if (@cdf_quantile <= 0.0  or  @cdf_quantile >= 1.0)
       rescue
         raise ArgumentError, "cdf_quantile expects numeric > 0 and < 1"
@@ -84,7 +84,7 @@ module Capricious
 
 
     def dirty?
-      not @spline
+      @spline == nil
     end
 
 
