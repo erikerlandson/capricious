@@ -33,8 +33,9 @@ module Capricious
       sd.data.should == [0.0, 1.0, 3.0, 4.0, 5.0, 7.0, 77.0]
 
       # a recompute should be invoked, and no longer dirty
-      sd.cdf(100).should == 1.0
-      sd.pdf(100).should == 0.0
+      p sd.spline.domain
+      sd.cdf(100).should <= 1.0
+      sd.pdf(100).should >= 0.0
       sd.dirty?.should == false
       
       # add data, become dirty again
@@ -43,8 +44,8 @@ module Capricious
       sd.data.should == [0.0, 1.0, 3.0, 4.0, 5.0, 7.0, 77.0, 10.0]
 
       # a recompute should be invoked, and no longer dirty
-      sd.cdf(100).should == 1.0
-      sd.pdf(100).should == 0.0
+      sd.cdf(100).should <= 1.0
+      sd.pdf(100).should >= 0.0
       sd.dirty?.should == false
       
       # clear should remove data, but not change config
@@ -82,6 +83,10 @@ module Capricious
         x += 0.01
       end
 
+      sl, su = sd.support
+      sl.should be_close(0.0, 0.01)
+      su.should be_close(1.0, 0.01)
+
       1000.times do
         x = 10.0*rv.next - 5.0
         # cdfs are between 0 and 1, inclusive
@@ -91,5 +96,46 @@ module Capricious
         sd.pdf(x).should >= 0.0
       end
     end
+
+
+    it "should reconstruct a gaussian distribution" do
+      rv = Capricious::Normal.new(0.0, 1.0)
+      sd = Capricious::SplineDistribution.new
+      # request inifinite support
+      sd.configure(:cdf_lb => -Float::INFINITY, :cdf_ub=> Float::INFINITY, :cdf_quantile => 0.05)
+      25000.times { sd << rv.next }
+
+      sd.recompute
+      p "\n"
+      p sd.spline.x
+      p sd.spline.y
+      p sd.spline.ypp
+      p sd.spline.domain
+
+      Z = 1.0 / Math.sqrt(2.0*Math::PI)
+      x = -4.0
+      while x <= 4.0
+        f = Z * Math.exp(-0.5*x**2)
+        t = sd.pdf(x)
+        print "[%f, %f, %f]\n" % [x, f, t] if (f-t).abs > 0.05
+        sd.pdf(x).should be_close(f, 0.05)
+        x += 0.1
+      end
+
+      sd.support.should == [-Float::INFINITY, Float::INFINITY]
+
+      # examine behavior around spline domain endpoints
+      bl, bu = sd.spline.domain
+      
+      # continuity of y and y' should be obeyed at the boundary of
+      # spline and exponential tails
+      dprev = 1.0
+      [0.1, 0.01, 0.001, 0.0001].each do |e|
+        d = (sd.cdf(bl-e) - sd.cdf(bl+e)).abs
+        d.should < dprev
+        dprev = d
+      end
+    end
+
   end
 end

@@ -171,8 +171,27 @@ module Capricious
       end
 
       # spline the cdf
-      @spline = Capricious::CubicSpline.new(:data => scdf, :yp_lower => yplower, :yp_upper => ypupper)
-      @spline.recompute
+      tries = 0
+      while true
+        tries += 1
+        raise "Failed to get sane cdf spline after %d tries" % [tries] if tries > 3
+
+        @spline = Capricious::CubicSpline.new(:data => scdf, :yp_lower => yplower, :yp_upper => ypupper)
+        # There appears to be a failure mode where the spline "curls" a bit at endpoints, and y' goes negative.
+        # In the world of a cdf and pdf, this is insanity: it's equivalent to a cdf that isn't monotonic, and
+        # a cdf that goes negative.  As a bonus, it causes exponential tail fitting to explode.
+        # It seems to occur on long tailed data, like tails of a gaussian.   My current best approach is to
+        # re-do the spline with a small positive y' at end points.   If I find a less ad hoc approach I can
+        # include it later.
+
+        # I think it is sufficient to check endpoints:
+        bl, bu = @spline.domain
+        break if @spline.qp(bl) >= 0.0 and @spline.qp(bu) >= 0.0
+        
+        # specify a positive gradient and try again
+        yplower = 0.00001 if @spline.qp(bl) < 0.0
+        ypupper = 0.00001 if @spline.qp(bu) < 0.0        
+      end
 
       # handle cases where cdf bounds are SPLINE, INFINITE
       respline = false
@@ -191,6 +210,7 @@ module Capricious
           yp = @spline.qp(x)
           @exp_lb_a = yp/y
           @exp_lb_b = Math.log(y) - yp*x/y
+          print "\nL: x= %f   y= %f   yp= %f   a= %f   b= %f\n" % [x, y, yp, @exp_lb_a, @exp_lb_b]
       end
       case @cdf_ub
         when SPLINE
@@ -207,11 +227,26 @@ module Capricious
           yp = @spline.qp(x)
           @exp_ub_a = yp/(1.0-y)
           @exp_ub_b = Math.log(1.0-y) + yp*x/(1.0-y)
+          print "\nU: x= %f   y= %f   yp= %f   a= %f   b= %f\n" % [x, y, yp, @exp_ub_a, @exp_ub_b]
       end
 
       # respline the cdf, if needed
-      @spline.configure(:data => scdf, :yp_lower => yplower, :yp_upper => ypupper) if respline
-      @spline.recompute
+      if respline then
+        tries = 0
+        # see comments above regarding this loop
+        while true
+          tries += 1
+          raise "Failed to get sane cdf spline after %d tries" % [tries] if tries > 3
+          @spline.configure(:data => scdf, :yp_lower => yplower, :yp_upper => ypupper)
+
+          bl, bu = @spline.domain
+          break if @spline.qp(bl) >= 0.0 and @spline.qp(bu) >= 0.0
+        
+          # specify a positive gradient and try again
+          yplower = 0.00001 if @spline.qp(bl) < 0.0
+          ypupper = 0.00001 if @spline.qp(bu) < 0.0
+        end
+      end
 
       # cache the valid range of the spline
       @smin, @smax = @spline.domain
