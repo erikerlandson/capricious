@@ -121,6 +121,15 @@ module Capricious
     end
 
 
+    def support
+      recompute if dirty?
+      lb, ub = @spline.domain
+      lb = -Float::INFINITY if @cdf_lb == INF
+      ub = Float::INFINITY if @cdf_ub == INF
+      [lb, ub]
+    end
+
+
     def recompute
       return if not dirty?
 
@@ -231,10 +240,14 @@ module Capricious
        case
          when [SPLINE, INF].include?(v)
            return v
+         when [Float::INFINITY, -Float::INFINITY].include?(v)
+           # internally, cleaner to store this as non-numeric constant to keep it
+           # easier to distringuish from "normal" finite Float values
+           return INF
          when v.class <= Numeric
            return v.to_f
          else
-           raise ArgumentError, "bounds argument expects SPLINE, INF or numeric value"
+           raise ArgumentError, "bounds argument expects SplineDistribution::SPLINE, SplineDistribution::INF, (+/-)Float::INFINITY, or numeric value"
        end
     end
 
