@@ -81,25 +81,29 @@ module Capricious
 
     # returns true if spline structures out of sync with current data entered
     def dirty?
-      not @ypp or @ypp.length != @h.length
+      (@ypp == nil) or (@ypp.length != @h.length)
+    end
+
+    def configuration
+      @args.clone.freeze
     end
 
     # return array of x values, as used by the spline algorithm
     def x
       recompute if dirty?
-      @x
+      @x.clone.freeze
     end
 
     # return array of y values, as used by the spline algorithm
     def y
       recompute if dirty?
-      @y
+      @y.clone.freeze
     end
 
     # return array of y'' values, as used by the spline algorithm
     def ypp
       recompute if dirty?
-      @ypp
+      @ypp.clone.freeze
     end
 
     # returns the [lower-bound, upper-bound] of the x axis the spline is defined on

@@ -82,6 +82,18 @@ module Capricious
       nil
     end
 
+    def configuration
+      @args.clone.freeze
+    end
+
+    def data
+      @data.clone.freeze
+    end
+
+    def spline
+      recompute if dirty?
+      @spline.clone.freeze
+    end
 
     def dirty?
       @spline == nil
@@ -247,7 +259,7 @@ module Capricious
            # internally, cleaner to store this as non-numeric constant to keep it
            # easier to distringuish from "normal" finite Float values
            return INFINITE
-         when v.class <= Numeric and v != Float::NAN
+         when (v.class <= Numeric and v != Float::NAN)
            return v.to_f
          else
            raise ArgumentError, "bounds argument expects SplineDistribution::SPLINE, SplineDistribution::INFINITE, (+/-)Float::INFINITY, or numeric value"
