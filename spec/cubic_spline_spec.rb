@@ -2,6 +2,28 @@ require File.expand_path(File.dirname(__FILE__) + '/spec_helper')
 
 module Capricious
   describe CubicSpline do
+    it "should accept supported data input methods" do
+      s1 = Capricious::CubicSpline.new(:data => [[1,2],[3,5],[7,11]])
+      s2 = Capricious::CubicSpline.new
+      s2 << [[1,2],[3,5],[7,11]]
+
+      # the above should be equivalent and yield equivalent results
+      s1.domain.should == s2.domain
+      s1.x.should == s2.x
+      s1.y.should == s2.y
+      s1.ypp.should == s2.ypp
+
+      # these should also be equivalent
+      s1 = Capricious::CubicSpline.new(:data => [[0,2],[1,5],[2,11]])
+      s2 = Capricious::CubicSpline.new
+      s2 << [0,2] << [1,5] << [2,11]
+
+      s1.domain.should == s2.domain
+      s1.x.should == s2.x
+      s1.y.should == s2.y
+      s1.ypp.should == s2.ypp
+    end
+
     it "should exactly fit parabolic data inside its sampled domain" do
       # I expect tight tolerances on this quadratic test
       eps = 0.0000001
@@ -10,7 +32,7 @@ module Capricious
       # that means splining a parabola gives me a nice test with 'exact' expectations on outputs
       # note that here I want to explicitly fix the first derivative at endpoints to match
       # the corresponding parabolic derivative
-      s = Capricious::CubicSpline.new([[-2,4],[-1,1],[0,0],[1,1],[2,4]], :yp_lower => -4, :yp_upper => 4)
+      s = Capricious::CubicSpline.new(:data => [[-2,4],[-1,1],[0,0],[1,1],[2,4]], :yp_lower => -4, :yp_upper => 4)
 
       # these should be exact:
       s.domain.should == [s.x.first, s.x.last]
@@ -40,7 +62,9 @@ module Capricious
       # that means splining a cubic polynomial gives me a nice test with 'exact' expectations on outputs
       # note that here I want to explicitly fix the first derivative at endpoints to match
       # the corresponding polynomial derivative
-      s = Capricious::CubicSpline.new([[0,0],[1,1],[2,8],[3,27]], :yp_lower => 0, :yp_upper => 27)
+      s = Capricious::CubicSpline.new
+      s.put([[0,0],[1,1],[2,8],[3,27]])
+      s.configure(:yp_lower => 0, :yp_upper => 27)
 
       # these should be exact:
       s.domain.should == [s.x.first, s.x.last]
@@ -62,16 +86,15 @@ module Capricious
     it "should interpolate sin function using natural spline" do
       pi = Math::PI
 
+      # natural spline: unfixed enpoint gradients
+      s = Capricious::CubicSpline.new
+
       # sample a sin function over [-pi/2, pi/2]
-      data = []
       n = 25
       (0..n).each do |j|
         x = -pi/2.0 + pi*j.to_f/n.to_f
-        data << [x, Math.sin(x)]
+        s << [x, Math.sin(x)]
       end
-
-      # natural spline: unfixed enpoint gradients
-      s = Capricious::CubicSpline.new(data)
 
       s.domain.should == [s.x.first, s.x.last]
       
@@ -95,17 +118,18 @@ module Capricious
     it "should interpolate sin function using fixed endpoint derivatives" do
       pi = Math::PI
 
+      s = Capricious::CubicSpline.new
+
       # sample a sin function over [-pi/2, pi/2]
-      data = []
       n = 25
       (0..n).each do |j|
         x = -pi/2.0 + pi*j.to_f/n.to_f
-        data << [x, Math.sin(x)]
+        s << [x, Math.sin(x)]
       end
-
-      # use my knowledge of endpoint derivatives
-      s = Capricious::CubicSpline.new(data, :yp_lower => 0, :yp_upper => 0)
       
+      # use my knowledge of endpoint derivatives
+      s.configure(:yp_lower => 0, :yp_upper => 0)
+
       s.domain.should == [s.x.first, s.x.last]
 
       # 1st derivative should be zero at endpoints by construction
@@ -125,25 +149,5 @@ module Capricious
       end
     end
 
-    it "should accept supported data input methods" do
-      s1 = Capricious::CubicSpline.new([[1,2],[3,5],[7,11]])
-      s2 = Capricious::CubicSpline.new([2,5,11], :xdata=>[1,3,7])
-
-      # the above should be equivalent and yield equivalent results
-      s1.domain.should == s2.domain
-      s1.x.should == s2.x
-      s1.y.should == s2.y
-      s1.ypp.should == s2.ypp
-
-      # these should also be equivalent
-      s1 = Capricious::CubicSpline.new([[0,2],[1,5],[2,11]])
-      # default x to [0, 1, 2, ...]
-      s2 = Capricious::CubicSpline.new([2,5,11])
-
-      s1.domain.should == s2.domain
-      s1.x.should == s2.x
-      s1.y.should == s2.y
-      s1.ypp.should == s2.ypp
-    end
   end
 end

@@ -19,66 +19,152 @@
 module Capricious
 
   class CubicSpline
-    # look but don't touch
-    attr_reader :x, :y, :ypp
+    def initialize(args = {})
+      reset
+      configure(args)
+    end
 
-    def initialize(data, args_ = {})
-      args = { :xdata => nil, :yp_lower => nil, :yp_upper => nil, :strict_domain => true }.merge(args_)
-      begin
-        @y = data.to_a
-        @x, @y = @y.transpose if @y.count{|e| e.class<=Array and e.length == 2} == @y.length
-        # note to self, something like "foo".to_f does *not* throw an exception
-        # maybe replace with something else more rigorous later?
-        @y.map! { |e| e.to_f }
-        @x = args[:xdata].to_a if args[:xdata] unless @x
-        @x = (0...@y.length).to_a unless @x
-        @x.map! { |e| e.to_f }
-      rescue
-        raise ArgumentError, "failed to acquire x and/or y data as floating point vectors"
-      end
+    # clears out data and sets configurations to defaults
+    def reset
+      @args = { :data => nil, :yp_lower => nil, :yp_upper => nil, :strict_domain => true }
+      clear
+    end
 
-      raise ArgumentError, "insufficient data, require >= 2 points" if @y.length < 2
-      raise ArgumentError, "x and y data are not of same length" if @x.length != @y.length
-      0.upto(@x.length-2) { |j| raise ArgumentError, "x data is not sorted and unique" if @x[j] >= @x[j+1] }
-      #(0...(@x.length-1)).each { |j| raise ArgumentError, "x data is not sorted and unique" if @x[j] >= @x[j+1] }
+    # clears out data, but not configured behaviors
+    def clear
+      @h = {}
+      dirty!
+    end
+
+    # update configuration.   config parameters not set here retain previous values
+    # current data remains unchanged, unless :data is given
+    def configure(args = {})
+      @args.merge!(args)
 
       begin
         @ypl = @ypu = nil
-        @ypl = args[:yp_lower].to_f if args[:yp_lower]
-        @ypu = args[:yp_upper].to_f if args[:yp_upper]
+        @ypl = @args[:yp_lower].to_f if @args[:yp_lower]
+        @ypu = @args[:yp_upper].to_f if @args[:yp_upper]
       rescue
         raise ArgumentError, "failed to acquire :yp_lower and/or :yp_upper as a floating point"
       end
 
-      @strict_domain = args[:strict_domain]
+      @strict_domain = @args[:strict_domain]
 
-      compute_ypp
+      # if a :data argument was provided, then reset data to that argument
+      if @args[:data] then
+        clear
+        enter(canonical(@args[:data]))
+        # this one needs to be reset to nil - don't want it to persist after this call
+        @args[:data] = nil
+      end
+
+      # compute state is now dirty
+      dirty!
+    end
+
+    def <<(data)
+      enter(canonical(data))
+      self
+    end
+
+    def put(data)
+      enter(canonical(data))
+      nil
+    end
+
+    def dirty?
+      not @ypp or @ypp.length != @h.length
+    end
+
+    def x
+      recompute if dirty?
+      @x
+    end
+
+    def y
+      recompute if dirty?
+      @y
+    end
+
+    def ypp
+      recompute if dirty?
+      @ypp
     end
 
     # returns the [lower-bound, upper-bound] of the x axis the spline is defined on
     def domain
+      recompute if dirty?
       return [@x.first, @x.last]
     end
 
     # returns the spline interpolation q(x)
     def q(x)
+      recompute if dirty?
       jlo, jhi, h, a, b = find(x.to_f)
       a*@y[jlo] + b*@y[jhi] + ((a**3-a)*@ypp[jlo] + (b**3-b)*@ypp[jhi])*(h**2)/6.0
     end
 
     # returns the 1st derivative of the spline interpolation q'(x)
     def qp(x)
+      recompute if dirty?
       jlo, jhi, h, a, b = find(x.to_f)
       (@y[jhi]-@y[jlo])/h - (3.0*a**2 - 1.0)*h*@ypp[jlo]/6.0 + (3.0*b**2 - 1.0)*h*@ypp[jhi]/6.0
     end
 
     # returns the 2nd derivative of the spline interpolation q''(x)
     def qpp(x)
+      recompute if dirty?
       jlo, jhi, h, a, b = find(x.to_f)
       a*@ypp[jlo] + b*@ypp[jhi]
     end
 
+    def recompute
+      return if not dirty?
+
+      # first fill @x and @y from @h
+      @x, @y = @h.to_a.sort.transpose
+      raise ArgumentError, "insufficient data, require >= 2 points" if @y.length < 2
+
+      # compute 2nd derivative vector
+      compute_ypp
+    end
+
     private
+    def canonical(data)
+      d = nil
+      begin
+        d = data.to_a
+        case
+          when d.count{|e| e.class<=Array and e.length == 2} == d.length
+            d = d
+          when d.length == 2
+            d = [d]
+          else
+            raise ""
+        end
+      rescue
+        raise ArgumentError, "failed to acquire data in supported format: [x,y], [[x1,y1], [x2,y2], ...], {x1 => y1, x2 => y2, ...}"
+      end
+      d.map!{|p| p.map{|e| e.to_f} }
+    end
+
+    # assumes data in canonical format [[x,y],[x,y],...]
+    # there are possible duplicate entry policies one could support
+    # here: duplicate raises exception, duplicates are ignored, etc.
+    # I'm currently just going to let dupes silently overwrite: 
+    # any policy support can be backward compatible
+    def enter(data)
+      return if data.length <= 0
+      data.each { |x,y| @h[x] = y }
+      dirty!
+    end
+
+    def dirty!
+      # reset anything that will need recomputing
+      @x = @y = @ypp = nil
+    end
+
     def find(x)
       raise ArgumentError, ("argument %f out of defined range (%f, %f)" % [x, @x.first, @x.last]) if (@strict_domain and (x < @x.first or x > @x.last))
       jlo = 0
