@@ -24,7 +24,7 @@ module Capricious
     # assign cdf lower or upper bounds with a 1st pass spline
     SPLINE = 'spline'
     # use an exponential tail to get infinite lower or upper bound for cdf
-    INF = 'inf'
+    INFINITE = 'inf'
 
 
     def initialize(args={})
@@ -48,8 +48,8 @@ module Capricious
     def configure(args = {})
       @args.merge!(args)
 
-      @cdf_lb = checkba(@args[:cdf_lb])
-      @cdf_ub = checkba(@args[:cdf_ub])
+      @cdf_lb = checkba(@args[:cdf_lb], true)
+      @cdf_ub = checkba(@args[:cdf_ub], false)
       @cdf_smooth_lb = @args[:cdf_smooth_lb]
       @cdf_smooth_ub = @args[:cdf_smooth_ub]
 
@@ -92,11 +92,11 @@ module Capricious
       recompute if dirty?
 
       if x < @smin then
-        return Math.exp(x*@exp_lb_a + @exp_lb_b) if @cdf_lb == INF
+        return Math.exp(x*@exp_lb_a + @exp_lb_b) if @cdf_lb == INFINITE
         return 0.0
       end
       if x > @smax then
-        return 1.0 - Math.exp(@exp_ub_b - x*@exp_ub_a) if @cdf_ub == INF
+        return 1.0 - Math.exp(@exp_ub_b - x*@exp_ub_a) if @cdf_ub == INFINITE
         return 1.0
       end
 
@@ -109,11 +109,11 @@ module Capricious
 
       # pdf is 1st derivative of the cdf
       if x < @smin then
-        return @exp_lb_a * Math.exp(x*@exp_lb_a + @exp_lb_b) if @cdf_lb == INF
+        return @exp_lb_a * Math.exp(x*@exp_lb_a + @exp_lb_b) if @cdf_lb == INFINITE
         return 0.0
       end
       if x > @smax then
-        return @exp_ub_a * Math.exp(@exp_ub_b - x*@exp_ub_a) if @cdf_ub == INF
+        return @exp_ub_a * Math.exp(@exp_ub_b - x*@exp_ub_a) if @cdf_ub == INFINITE
         return 0.0
       end
 
@@ -124,8 +124,8 @@ module Capricious
     def support
       recompute if dirty?
       lb, ub = @spline.domain
-      lb = -Float::INFINITY if @cdf_lb == INF
-      ub = Float::INFINITY if @cdf_ub == INF
+      lb = -Float::INFINITY if @cdf_lb == INFINITE
+      ub = Float::INFINITY if @cdf_ub == INFINITE
       [lb, ub]
     end
 
@@ -134,13 +134,14 @@ module Capricious
       return if not dirty?
 
       raw = @data
-      raise ArgumentError, "insufficient data, require >= 2 points" if raw.length < 2
 
       # if specific bounds were provided, data needs to be
       # strictly inside those bounds
       # make non-interior data an (optional) exception in future?
       raw.select!{|x| x > @cdf_lb} if @cdf_lb.class <= Float
       raw.select!{|x| x < @cdf_ub} if @cdf_ub.class <= Float
+
+      raise ArgumentError, "insufficient data, require >= 2 points" if raw.length < 2
 
       # get a cdf, sampled at the requested resolution
       raw.sort!
@@ -161,7 +162,7 @@ module Capricious
       @spline = Capricious::CubicSpline.new(:data => scdf, :yp_lower => yplower, :yp_upper => ypupper)
       @spline.recompute
 
-      # handle cases where cdf bounds are SPLINE, INF
+      # handle cases where cdf bounds are SPLINE, INFINITE
       respline = false
       case @cdf_lb
         when SPLINE
@@ -172,7 +173,7 @@ module Capricious
           scdf.insert(0, [b, 0.0])
           yplower = 0.0 if @cdf_smooth_lb
           respline = true
-        when INF
+        when INFINITE
           x = @spline.x.first
           y = @spline.q(x)
           yp = @spline.qp(x)
@@ -188,7 +189,7 @@ module Capricious
           scdf.insert(-1, [b, 1.0])
           ypupper = 0.0 if @cdf_smooth_ub
           respline = true
-        when INF
+        when INFINITE
           x = @spline.x.last
           y = @spline.q(x)
           yp = @spline.qp(x)
@@ -236,18 +237,20 @@ module Capricious
       @spline = nil
     end
 
-    def checkba(v)
+    def checkba(v, lower)
+       inf = Float::INFINITY
+       inf = -inf if lower
        case
-         when [SPLINE, INF].include?(v)
+         when [SPLINE, INFINITE].include?(v)
            return v
-         when [Float::INFINITY, -Float::INFINITY].include?(v)
+         when v == inf
            # internally, cleaner to store this as non-numeric constant to keep it
            # easier to distringuish from "normal" finite Float values
-           return INF
-         when v.class <= Numeric
+           return INFINITE
+         when v.class <= Numeric and v != Float::NAN
            return v.to_f
          else
-           raise ArgumentError, "bounds argument expects SplineDistribution::SPLINE, SplineDistribution::INF, (+/-)Float::INFINITY, or numeric value"
+           raise ArgumentError, "bounds argument expects SplineDistribution::SPLINE, SplineDistribution::INFINITE, (+/-)Float::INFINITY, or numeric value"
        end
     end
 
