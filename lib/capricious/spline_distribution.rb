@@ -16,7 +16,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-require '/home/eje/git/capricious/lib/capricious/cubicspline'
+require './cubic_spline'
 
 module Capricious
 
@@ -73,7 +73,8 @@ module Capricious
       end
 
       # spline the cdf
-      @spline = Capricious::CubicSpline.new(scdf, :yp_lower => yplower, :yp_upper => ypupper)
+      @spline = Capricious::CubicSpline.new(:data => scdf, :yp_lower => yplower, :yp_upper => ypupper)
+      @spline.recompute
 
       # handle cases where cdf bounds are SPLINE, INF
       respline = false
@@ -111,7 +112,8 @@ module Capricious
       end
 
       # respline the cdf, if needed
-      @spline = Capricious::CubicSpline.new(scdf, :yp_lower => yplower, :yp_upper => ypupper) if respline
+      @spline.configure(:data => scdf, :yp_lower => yplower, :yp_upper => ypupper) if respline
+      @spline.recompute
 
       # cache the valid range of the spline
       @smin, @smax = @spline.domain
