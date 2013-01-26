@@ -24,6 +24,7 @@ module Capricious
     CARDINAL = 'cardinal'
     CATMULL_ROM = 'catmull_rom'
     MONOTONIC = 'monotonic'
+    STRICT_MONOTONIC = 'strict_monotonic'
 
     def initialize(args = {})
       reset
@@ -31,7 +32,7 @@ module Capricious
     end
 
     def reset
-      @args = { :data => nil, :gradient_method => FINITE_DIFFERENCE, :strict_domain => true,  }
+      @args = { :data => nil, :gradient_method => FINITE_DIFFERENCE, :strict_domain => true, :monotonic_epsilon => 1e-6}
       clear
     end
 
@@ -117,7 +118,9 @@ module Capricious
         when FINITE_DIFFERENCE
           finite_difference
         when MONOTONIC
-          monotonic
+          monotonic(false)
+        when STRICT_MONOTONIC
+          monotonic(true)
         else
           raise ArgumentError, "unimplemented gradient method %s" % [@args[:gradient_method]]
       end
@@ -198,7 +201,7 @@ module Capricious
     end
 
 
-    def monotonic
+    def monotonic(strict)
       # http://en.wikipedia.org/wiki/Monotone_cubic_interpolation
       n = @x.length
       @m = Array.new(n, 0.0)
@@ -214,26 +217,38 @@ module Capricious
         @m[j] = (d[j-1]+d[j])/2.0
       end
 
+      # avoid instability from dividing by very small numbers
+      eps = @args[:monotonic_epsilon]
+
       1.upto(n-2) do |j|
-        if d[j] <= 0.0 then
+        delta = d[j]
+        if delta < eps then
           # a flat region
           @m[j] = @m[j+1] = 0.0
           next
         end
 
-        a = @m[j]/d[j]
-        b = @m[j+1]/d[j]
+        a = @m[j]/delta
+        b = @m[j+1]/delta
 
         if a < 0.0 or b < 0.0 then
-          # the data is not monotone - go flat as a fallback
+          # the data itself is not monotone - go flat as a fallback
           # another policy might be to interpret this case as an exception
           @m[j] = @m[j+1] = 0.0
           next
         end
 
-        # note this implements a non-strict monotonicity constraint
-        @m[j] = 3.0*d[j] if a > 3.0 
-        @m[j+1] = 3.0*d[j] if b > 3.0
+        if strict then
+          z = a**2 + b**2
+          if z > 9.0 then
+            tau = 3.0 / Math.sqrt(z)
+            @m[j] = tau*delta*a
+            @m[j+1] = tau*delta*b
+          end
+        else
+          @m[j] = 3.0*delta if a > 3.0 
+          @m[j+1] = 3.0*delta if b > 3.0
+        end
       end
     end
   end
