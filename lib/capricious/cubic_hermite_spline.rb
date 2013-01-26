@@ -89,22 +89,20 @@ module Capricious
 
     def q(x)
       recompute if dirty?
-      j0, j1, t = find(x.to_f)
-      (2.0*t**3 - 3.0*t**2 + 1)*@y[j0] + (t**3 - 2.0*t**2 + t)*@m[j0] + (3.0*t**2 - 2.0*t**3)*@y[j1] + (t**3 - t**2)*@m[j1]
+      j0, j1, t, h = find(x.to_f)
+      (2.0*t**3 - 3.0*t**2 + 1)*@y[j0] + (t**3 - 2.0*t**2 + t)*h*@m[j0] + (3.0*t**2 - 2.0*t**3)*@y[j1] + (t**3 - t**2)*h*@m[j1]
     end
 
     def qp(x)
       recompute if dirty?
-      j0, j1, t = find(x.to_f)
-      # chain rule, applied to q(t(x)) wrt x
-      ((6.0*t**2 - 6.0*t)*@y[j0] + (3.0*t**2 - 4.0*t + 1.0)*@m[j0] + (6.0*t - 6.0*t**2)*@y[j1] + (3.0*t**2 - 2.0*t)*@m[j1]) / (@x[j1]-@x[j0])
+      j0, j1, t, h = find(x.to_f)
+      (6.0*t**2 - 6.0*t)*@y[j0] + (3.0*t**2 - 4.0*t + 1.0)*h*@m[j0] + (6.0*t - 6.0*t**2)*@y[j1] + (3.0*t**2 - 2.0*t)*h*@m[j1]
     end
 
     def qpp(x)
       recompute if dirty?
-      j0, j1, t = find(x.to_f)
-      # chain rule, applied to q'(t(x)) wrt x
-      ((12.0*t - 6.0)*@y[j0] + (6.0*t - 4.0)*@m[j0] + (6.0 - 12.0*t)*@y[j1] + (6.0*t - 2.0)*@m[j1]) / ((@x[j1]-@x[j0])**2)
+      j0, j1, t, h = find(x.to_f)
+      (12.0*t - 6.0)*@y[j0] + (6.0*t - 4.0)*h*@m[j0] + (6.0 - 12.0*t)*@y[j1] + (6.0*t - 2.0)*h*@m[j1]
     end
 
     def recompute
@@ -175,9 +173,10 @@ module Capricious
           jlo = j
         end
       end
-      t = (x - @x[jlo])/(@x[jhi] - @x[jlo])
+      h = @x[jhi] - @x[jlo]
+      t = (x - @x[jlo])/h
 
-      [jlo, jhi, t]
+      [jlo, jhi, t, h]
     end
 
 
@@ -193,7 +192,7 @@ module Capricious
       1.upto(n-2) do |j|
         g0 = (@y[j]-@y[j-1]) / (@x[j]-@x[j-1])
         g1 = (@y[j+1]-@y[j]) / (@x[j+1]-@x[j])
-        @m = (g0+g1)/2.0
+        @m[j] = (g0+g1)/2.0
       end
 
       # upper endpoint
@@ -222,7 +221,7 @@ module Capricious
 
       1.upto(n-2) do |j|
         delta = d[j]
-        if delta < eps then
+        if delta.abs < eps then
           # a flat region
           @m[j] = @m[j+1] = 0.0
           next
