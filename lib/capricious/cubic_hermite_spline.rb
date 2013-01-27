@@ -72,6 +72,10 @@ module Capricious
       @args.clone.freeze
     end
 
+    def data
+      @h.clone.freeze
+    end
+
     def x
       recompute if dirty?
       @x.clone.freeze
