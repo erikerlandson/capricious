@@ -19,12 +19,13 @@
 module Capricious
 
   class CubicHermiteSpline
-    # gradient selection methods, select with :gradient_method => <method> 
+    # gradient methods, select with :gradient_method => <method> 
     FINITE_DIFFERENCE = 'finite_difference'
-    CARDINAL = 'cardinal'
-    CATMULL_ROM = 'catmull_rom'
     MONOTONIC = 'monotonic'
     STRICT_MONOTONIC = 'strict_monotonic'
+    # these gradient methods not yet implemented
+    CARDINAL = 'cardinal'
+    CATMULL_ROM = 'catmull_rom'
 
     def initialize(args = {})
       reset
@@ -91,6 +92,11 @@ module Capricious
       @m.clone.freeze
     end
 
+    def domain
+      recompute if dirty?
+      [@x.first, @x.last]
+    end
+
     def q(x)
       recompute if dirty?
       j0, j1, t, h = find(x.to_f)
@@ -100,13 +106,13 @@ module Capricious
     def qp(x)
       recompute if dirty?
       j0, j1, t, h = find(x.to_f)
-      (6.0*t**2 - 6.0*t)*@y[j0] + (3.0*t**2 - 4.0*t + 1.0)*h*@m[j0] + (6.0*t - 6.0*t**2)*@y[j1] + (3.0*t**2 - 2.0*t)*h*@m[j1]
+      ((6.0*t**2 - 6.0*t)*@y[j0] + (3.0*t**2 - 4.0*t + 1.0)*h*@m[j0] + (6.0*t - 6.0*t**2)*@y[j1] + (3.0*t**2 - 2.0*t)*h*@m[j1])/h
     end
 
     def qpp(x)
       recompute if dirty?
       j0, j1, t, h = find(x.to_f)
-      (12.0*t - 6.0)*@y[j0] + (6.0*t - 4.0)*h*@m[j0] + (6.0 - 12.0*t)*@y[j1] + (6.0*t - 2.0)*h*@m[j1]
+      ((12.0*t - 6.0)*@y[j0] + (6.0*t - 4.0)*h*@m[j0] + (6.0 - 12.0*t)*@y[j1] + (6.0*t - 2.0)*h*@m[j1])/(h**2)
     end
 
     def recompute
