@@ -33,7 +33,7 @@ module Capricious
     end
 
     def reset
-      @args = { :data => nil, :gradient_method => FINITE_DIFFERENCE, :strict_domain => true, :monotonic_epsilon => 1e-6}
+      @args = { :data => nil, :gradient_method => FINITE_DIFFERENCE, :strict_domain => true, :monotonic_epsilon => 1e-6, :fixed_gradients => {}}
       clear
     end
 
@@ -44,6 +44,14 @@ module Capricious
 
     def configure(args = {})
       @args.merge!(args)
+
+      begin
+        t = {}
+        @args[:fixed_gradients].to_a.each { |x,y| t[x.to_f] = y.to_f }
+        @args[:fixed_gradients] = t
+      rescue
+        raise ArgumentError, "failed to acquire :fix_gradient arg as mapping of Float -> Float"
+      end
 
       if @args[:data] then
         clear
@@ -132,6 +140,9 @@ module Capricious
         else
           raise ArgumentError, "unimplemented gradient method %s" % [@args[:gradient_method]]
       end
+
+      fg = @args[:fixed_gradients]
+      0.upto(@m.length-1) { |j| @m[j] = fg[@x[j]] if fg.key?(@x[j]) }
 
       nil
     end
