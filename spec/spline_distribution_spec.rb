@@ -1,7 +1,39 @@
 require File.expand_path(File.dirname(__FILE__) + '/spec_helper')
 
 module Capricious
-  describe SplineDistribution do
+  describe SplineDistribution do      
+    def check_continuity(obj, meth, x)
+      d = 0.1
+      [0.1, 0.01, 0.001, 0.0001, 0.00001, 0.00001].each do |e|
+        while d > 1e-10
+          y = obj.send(meth, x)
+          yl = obj.send(meth, x-d)  
+          yu = obj.send(meth, x+d)
+          break if (y-yl).abs + (y-yu).abs < 2.0*e
+          d /= 10.0
+        end
+        d.should > 1e-10
+      end
+    end
+
+    def check_pdf_cdf(sd, l, u, step = 0.001)
+      x = l
+      while (x <= u)
+        #print "check_pdf_cdf failed: x= %f  pdf(x)= %f  cdf(x)= %f  domain=%s  data=%s\n" % [x, sd.pdf(x), sd.cdf(x), sd.spline.domain, sd.spline.data] if sd.pdf(x) < 0.0
+        sd.pdf(x).should >= 0.0
+
+        #print "check_pdf_cdf failed: x= %f  pdf(x)= %f  cdf(x)= %f\n" % [x, sd.pdf(x), sd.cdf(x)] if sd.cdf(x) < 0.0
+        sd.cdf(x).should >= 0.0
+
+        #print "check_pdf_cdf failed: x= %f  pdf(x)= %f  cdf(x)= %f\n" % [x, sd.pdf(x), sd.cdf(x)] if sd.cdf(x) > 1.0
+        sd.cdf(x).should <= 1.0
+
+        #print "check_pdf_cdf failed: x= %f  pdf(x)= %f  cdf(x)= %f\n" % [x, sd.pdf(x), sd.cdf(x)] if sd.cdf(x) > sd.cdf(x+step)
+        sd.cdf(x).should <= sd.cdf(x+step)
+        x += step
+      end
+    end
+
     it "should properly maintain data and configuration state" do
       sd = Capricious::SplineDistribution.new
 
@@ -33,7 +65,6 @@ module Capricious
       sd.data.should == [0.0, 1.0, 3.0, 4.0, 5.0, 7.0, 77.0]
 
       # a recompute should be invoked, and no longer dirty
-      p sd.spline.domain
       sd.cdf(100).should <= 1.0
       sd.pdf(100).should >= 0.0
       sd.dirty?.should == false
@@ -69,32 +100,20 @@ module Capricious
       sd.configure(:cdf_smooth_lb => false, :cdf_smooth_ub => false, :cdf_quantile => 0.2)
       25000.times { sd << rv.next }
 
-      # until recompute is invoked, implicitly or explicitly, should be dirty
-      sd.dirty?.should == true
-
-      # any attempt to query the distribution should induce recompute so no longer dirty
-      sd.pdf(0.5)
-      sd.dirty?.should == false
-
-      x = 0.01
-      while x <= 0.99
-        sd.cdf(x).should be_close(x, 0.025)
-        sd.pdf(x).should be_close(1.0, 0.05)
-        x += 0.01
-      end
+      # check valid cdf/pdf behavior
+      check_pdf_cdf(sd, -1.0, 2.0)
 
       sl, su = sd.support
       sl.should be_close(0.0, 0.01)
       su.should be_close(1.0, 0.01)
 
-      1000.times do
-        x = 10.0*rv.next - 5.0
-        # cdfs are between 0 and 1, inclusive
-        sd.cdf(x).should >= 0.0
-        sd.cdf(x).should <= 1.0
-        # pdfs are >= 0
-        sd.pdf(x).should >= 0.0
+      x = sl
+      while x <= su
+        sd.cdf(x).should be_close(x, 0.025)
+        sd.pdf(x).should be_close(1.0, 0.05)
+        x += 0.01
       end
+
     end
 
 
@@ -102,39 +121,32 @@ module Capricious
       rv = Capricious::Normal.new(0.0, 1.0)
       sd = Capricious::SplineDistribution.new
       # request inifinite support
-      sd.configure(:cdf_lb => -Float::INFINITY, :cdf_ub=> Float::INFINITY, :cdf_quantile => 0.05)
+      sd.configure(:cdf_lb => -Float::INFINITY, :cdf_ub=> Float::INFINITY, :cdf_quantile => 0.1)
       25000.times { sd << rv.next }
 
-      sd.recompute
-      p "\n"
-      p sd.spline.x
-      p sd.spline.y
-      p sd.spline.ypp
-      p sd.spline.domain
+      # check valid cdf/pdf behavior
+      sl, su = sd.spline.domain
+      check_pdf_cdf(sd, sl-0.1, su+0.1)
 
       Z = 1.0 / Math.sqrt(2.0*Math::PI)
-      x = -4.0
-      while x <= 4.0
+      x = sl-0.1
+      while x <= su+0.1
         f = Z * Math.exp(-0.5*x**2)
-        t = sd.pdf(x)
-        print "[%f, %f, %f]\n" % [x, f, t] if (f-t).abs > 0.05
-        sd.pdf(x).should be_close(f, 0.05)
-        x += 0.1
+        #t = sd.pdf(x)
+        #print "[%f, %f, %f]\n" % [x, f, t] if (f-t).abs > 0.1
+        sd.pdf(x).should be_close(f, 0.1)
+        x += 0.01
       end
 
       sd.support.should == [-Float::INFINITY, Float::INFINITY]
 
       # examine behavior around spline domain endpoints
-      bl, bu = sd.spline.domain
-      
       # continuity of y and y' should be obeyed at the boundary of
       # spline and exponential tails
-      dprev = 1.0
-      [0.1, 0.01, 0.001, 0.0001].each do |e|
-        d = (sd.cdf(bl-e) - sd.cdf(bl+e)).abs
-        d.should < dprev
-        dprev = d
-      end
+      check_continuity(sd, :cdf, sl)
+      check_continuity(sd, :cdf, su)
+      check_continuity(sd, :pdf, sl)
+      check_continuity(sd, :pdf, su)
     end
 
   end
