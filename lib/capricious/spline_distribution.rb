@@ -34,7 +34,7 @@ module Capricious
 
 
     def reset
-      @args = {:data => nil, :cdf_lb => SPLINE, :cdf_ub => SPLINE, :cdf_smooth_lb => true, :cdf_smooth_ub => true, :cdf_quantile => 0.05}
+      @args = {:data => nil, :cdf_lb => SPLINE, :cdf_ub => SPLINE, :cdf_smooth_lb => false, :cdf_smooth_ub => false, :cdf_quantile => 0.05}
       clear
     end
 

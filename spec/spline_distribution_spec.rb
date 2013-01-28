@@ -38,19 +38,19 @@ module Capricious
       sd = Capricious::SplineDistribution.new
 
       # default initial state
-      sd.configuration.should == {:data => nil, :cdf_lb => SplineDistribution::SPLINE, :cdf_ub => SplineDistribution::SPLINE, :cdf_smooth_lb => true, :cdf_smooth_ub => true, :cdf_quantile => 0.05}
+      sd.configuration.should == {:data => nil, :cdf_lb => SplineDistribution::SPLINE, :cdf_ub => SplineDistribution::SPLINE, :cdf_smooth_lb => false, :cdf_smooth_ub => false, :cdf_quantile => 0.05}
       sd.data.should == []
       sd.dirty?.should == true
 
       # configuration should not alter data (long as :data not given)
       sd.configure(:cdf_lb => -Float::INFINITY)
-      sd.configuration.should == {:data => nil, :cdf_lb => -Float::INFINITY, :cdf_ub => SplineDistribution::SPLINE, :cdf_smooth_lb => true, :cdf_smooth_ub => true, :cdf_quantile => 0.05}
+      sd.configuration.should == {:data => nil, :cdf_lb => -Float::INFINITY, :cdf_ub => SplineDistribution::SPLINE, :cdf_smooth_lb => false, :cdf_smooth_ub => false, :cdf_quantile => 0.05}
       sd.data.should == []
       sd.dirty?.should == true
       
       # adding data should show up, not alter config
       sd << 0
-      sd.configuration.should == {:data => nil, :cdf_lb => -Float::INFINITY, :cdf_ub => SplineDistribution::SPLINE, :cdf_smooth_lb => true, :cdf_smooth_ub => true, :cdf_quantile => 0.05}
+      sd.configuration.should == {:data => nil, :cdf_lb => -Float::INFINITY, :cdf_ub => SplineDistribution::SPLINE, :cdf_smooth_lb => false, :cdf_smooth_ub => false, :cdf_quantile => 0.05}
       sd.data.should == [0.0]
       sd.dirty?.should == true
       
@@ -81,14 +81,14 @@ module Capricious
       
       # clear should remove data, but not change config
       sd.clear
-      sd.configuration.should == {:data => nil, :cdf_lb => -Float::INFINITY, :cdf_ub => SplineDistribution::SPLINE, :cdf_smooth_lb => true, :cdf_smooth_ub => true, :cdf_quantile => 0.05}
+      sd.configuration.should == {:data => nil, :cdf_lb => -Float::INFINITY, :cdf_ub => SplineDistribution::SPLINE, :cdf_smooth_lb => false, :cdf_smooth_ub => false, :cdf_quantile => 0.05}
       sd.data.should == []
       sd.dirty?.should == true
 
       # reset clears data and resets config
       sd << 42
       sd.reset
-      sd.configuration.should == {:data => nil, :cdf_lb => SplineDistribution::SPLINE, :cdf_ub => SplineDistribution::SPLINE, :cdf_smooth_lb => true, :cdf_smooth_ub => true, :cdf_quantile => 0.05}
+      sd.configuration.should == {:data => nil, :cdf_lb => SplineDistribution::SPLINE, :cdf_ub => SplineDistribution::SPLINE, :cdf_smooth_lb => false, :cdf_smooth_ub => false, :cdf_quantile => 0.05}
       sd.data.should == []
       sd.dirty?.should == true
     end
@@ -97,7 +97,7 @@ module Capricious
     it "should reconstruct a uniform distribution" do
       rv = Capricious::Uniform.new
       sd = Capricious::SplineDistribution.new
-      sd.configure(:cdf_smooth_lb => false, :cdf_smooth_ub => false, :cdf_quantile => 0.2)
+      sd.configure(:cdf_quantile => 0.2)
       25000.times { sd << rv.next }
 
       # check valid cdf/pdf behavior
