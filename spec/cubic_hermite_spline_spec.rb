@@ -6,10 +6,10 @@ module Capricious
     def check_monotonic(s, l, u, step = 0.001)
       x = l
       while (x <= u)
-        print "check_monotonic failed: x= %f  q(x)= %f  q'(x)= %f  q''(x)= %f   m= %s\n" % [x, s.q(x), s.qp(x), s.qpp(x), s.m] if s.qp(x) < 0.0
+        #print "check_monotonic failed: x= %f  q(x)= %f  q'(x)= %f  q''(x)= %f   m= %s\n" % [x, s.q(x), s.qp(x), s.qpp(x), s.m] if s.qp(x) < 0.0
         s.qp(x).should >= 0.0
 
-        print "check_monotonic failed: x= %f  q(x)= %f  q'(x)= %f  q''(x)= %f   m= %s\n" % [x, s.q(x), s.qp(x), s.qpp(x), s.m] if s.q(x) > s.q(x+step)
+        #print "check_monotonic failed: x= %f  q(x)= %f  q'(x)= %f  q''(x)= %f   m= %s\n" % [x, s.q(x), s.qp(x), s.qpp(x), s.m] if s.q(x) > s.q(x+step)
         s.q(x).should <= s.q(x+step)
 
         x += step
