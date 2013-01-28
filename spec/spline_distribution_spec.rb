@@ -186,5 +186,36 @@ module Capricious
       check_continuity(sd, :pdf, su)
     end
 
+    it "should reconstruct an exponential distribution" do
+      rv = Capricious::Exponential.new(1.0)
+      sd = Capricious::SplineDistribution.new
+      # request one-sided infinite support
+      sd.configure(:cdf_ub=> Float::INFINITY, :cdf_quantile => 0.1)
+      25000.times { sd << rv.next }
+
+      # check valid cdf/pdf behavior
+      sl, su = sd.spline.domain
+      check_pdf_cdf(sd, sl-0.1, su+0.1)
+
+      sd.support.should == [sl, Float::INFINITY]
+      sl.should be_close(0.0, 0.01)
+
+      x = sl
+      while x <= su+0.1
+        f = Math.exp(-x)
+        sd.pdf(x).should be_close(f, 0.1)
+        x += 0.01
+      end
+
+      # examine behavior around spline domain endpoints
+      # continuity of y and y' should be obeyed at the boundary of
+      # spline and exponential tails
+      check_continuity(sd, :cdf, sl)
+      check_continuity(sd, :cdf, su)
+      # pdf of an exponential distribution is not continuous on left end
+      #check_continuity(sd, :pdf, sl)
+      check_continuity(sd, :pdf, su)
+    end
+
   end
 end
