@@ -240,7 +240,7 @@ module Capricious
       # avoid instability from dividing by very small numbers
       eps = @args[:monotonic_epsilon]
 
-      1.upto(n-2) do |j|
+      0.upto(n-2) do |j|
         delta = d[j]
         if delta.abs < eps then
           # a flat region
