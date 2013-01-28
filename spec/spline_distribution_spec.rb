@@ -128,10 +128,10 @@ module Capricious
       sl, su = sd.spline.domain
       check_pdf_cdf(sd, sl-0.1, su+0.1)
 
-      Z = 1.0 / Math.sqrt(2.0*Math::PI)
+      z = 1.0 / Math.sqrt(2.0*Math::PI)
       x = sl-0.1
       while x <= su+0.1
-        f = Z * Math.exp(-0.5*x**2)
+        f = z * Math.exp(-0.5*x**2)
         #t = sd.pdf(x)
         #print "[%f, %f, %f]\n" % [x, f, t] if (f-t).abs > 0.1
         sd.pdf(x).should be_close(f, 0.1)
@@ -139,6 +139,43 @@ module Capricious
       end
 
       sd.support.should == [-Float::INFINITY, Float::INFINITY]
+
+      # examine behavior around spline domain endpoints
+      # continuity of y and y' should be obeyed at the boundary of
+      # spline and exponential tails
+      check_continuity(sd, :cdf, sl)
+      check_continuity(sd, :cdf, su)
+      check_continuity(sd, :pdf, sl)
+      check_continuity(sd, :pdf, su)
+    end
+
+
+    it "should reconstruct a gaussian distribution with smooth-endpoints" do
+      rv = Capricious::Normal.new(0.0, 1.0)
+      sd = Capricious::SplineDistribution.new
+      # request inifinite support
+      sd.configure(:cdf_smooth_lb => true, :cdf_smooth_ub => true, :cdf_quantile => 0.1)
+      25000.times { sd << rv.next }
+
+      # check valid cdf/pdf behavior
+      sl, su = sd.spline.domain
+      check_pdf_cdf(sd, sl-0.1, su+0.1)
+
+      sd.support.should == [sl, su]
+      sd.cdf(sl).should == 0.0
+      sd.pdf(sl).should == 0.0
+      sd.cdf(su).should == 1.0
+      sd.pdf(su).should == 0.0
+
+      z = 1.0 / Math.sqrt(2.0*Math::PI)
+      x = sl-0.1
+      while x <= su+0.1
+        f = z * Math.exp(-0.5*x**2)
+        #t = sd.pdf(x)
+        #print "[%f, %f, %f]\n" % [x, f, t] if (f-t).abs > 0.1
+        sd.pdf(x).should be_close(f, 0.1)
+        x += 0.01
+      end
 
       # examine behavior around spline domain endpoints
       # continuity of y and y' should be obeyed at the boundary of
