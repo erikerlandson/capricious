@@ -114,6 +114,8 @@ module Capricious
         x += 0.01
       end
 
+      sd.mean.should be_close(0.5, 0.05)
+      sd.variance.should be_close(1.0/12.0, 0.005)
     end
 
 
@@ -121,8 +123,8 @@ module Capricious
       rv = Capricious::Normal.new(0.0, 1.0)
       sd = Capricious::SplineDistribution.new
       # request inifinite support
-      sd.configure(:cdf_lb => -Float::INFINITY, :cdf_ub=> Float::INFINITY, :cdf_quantile => 0.1)
-      25000.times { sd << rv.next }
+      sd.configure(:cdf_lb => -Float::INFINITY, :cdf_ub=> Float::INFINITY, :cdf_quantile => 0.01)
+      50000.times { sd << rv.next }
 
       # check valid cdf/pdf behavior
       sl, su = sd.spline.domain
@@ -147,6 +149,11 @@ module Capricious
       check_continuity(sd, :cdf, su)
       check_continuity(sd, :pdf, sl)
       check_continuity(sd, :pdf, su)
+
+      sd.mean.should be_close(0.0, 0.02)
+      # variances are biased a bit high by the current algorithm,
+      # would be nice to figure out a correction strategy some day
+      sd.variance.should be_close(1.0, 0.1)
     end
 
 
@@ -154,8 +161,8 @@ module Capricious
       rv = Capricious::Normal.new(0.0, 1.0)
       sd = Capricious::SplineDistribution.new
       # request inifinite support
-      sd.configure(:cdf_smooth_lb => true, :cdf_smooth_ub => true, :cdf_quantile => 0.1)
-      25000.times { sd << rv.next }
+      sd.configure(:cdf_smooth_lb => true, :cdf_smooth_ub => true, :cdf_quantile => 0.01)
+      50000.times { sd << rv.next }
 
       # check valid cdf/pdf behavior
       sl, su = sd.spline.domain
@@ -184,14 +191,28 @@ module Capricious
       check_continuity(sd, :cdf, su)
       check_continuity(sd, :pdf, sl)
       check_continuity(sd, :pdf, su)
+
+      sd.mean.should be_close(0.0, 0.02)
+      # variances are biased a bit high by the current algorithm,
+      # would be nice to figure out a correction strategy some day
+      sd.variance.should be_close(1.0, 0.1)
     end
 
     it "should reconstruct an exponential distribution" do
-      rv = Capricious::Exponential.new(1.0)
+      rv = Capricious::Exponential.new(1.0, nil, MWC5, true)
       sd = Capricious::SplineDistribution.new
       # request one-sided infinite support
-      sd.configure(:cdf_ub=> Float::INFINITY, :cdf_quantile => 0.1)
-      25000.times { sd << rv.next }
+      sd.configure(:cdf_ub=> Float::INFINITY, :cdf_quantile => 0.01)
+      n = 0
+      sx = 0.0
+      sxx = 0.0
+      50000.times do
+        x = rv.next
+        sd << x
+        n += 1
+        sx += x
+        sxx += x**2
+      end
 
       # check valid cdf/pdf behavior
       sl, su = sd.spline.domain
@@ -215,6 +236,11 @@ module Capricious
       # pdf of an exponential distribution is not continuous on left end
       #check_continuity(sd, :pdf, sl)
       check_continuity(sd, :pdf, su)
+
+      sd.mean.should be_close(1.0, 0.02)
+      # variances are biased a bit high by the current algorithm,
+      # would be nice to figure out a correction strategy some day
+      sd.variance.should be_close(1.0, 0.1)
     end
 
   end
