@@ -33,18 +33,27 @@ module Capricious
     end
 
 
+    # clears data and model.  resets configuration to factory default
     def reset
       @args = {:data => nil, :cdf_lb => SPLINE, :cdf_ub => SPLINE, :cdf_smooth_lb => false, :cdf_smooth_ub => false, :cdf_quantile => 0.05}
       clear
     end
 
 
+    # clears data, and model
     def clear
-      @data = []
+      clear_data
       dirty!
     end
 
 
+    # clears the raw data but keeps the distribution model for use
+    def clear_data
+      @data = []
+    end
+
+
+    # modify configuration.  data is unchanged, unless :data => <data> argument is also provided
     def configure(args = {})
       @args.merge!(args)
 
@@ -72,34 +81,44 @@ module Capricious
     end
 
 
+    # enter data to be used for constructing model
+    # sd << x
+    # sd << [x, x, ...]
     def <<(data)
       enter(canonical(data))
       self
     end
 
+    # synonym for << operator
     def put(data)
       enter(canonical(data))
       nil
     end
 
+    # returns the hash of configuration arguments
     def configuration
       @args.clone.freeze
     end
 
+    # returns the raw data
     def data
       @data.clone.freeze
     end
 
+    # returns the spline used to model the cdf
     def spline
       recompute if dirty?
       @spline.clone.freeze
     end
 
+    # true if data is out of sync with model
+    # (note, this will return false if data was cleared using clear_data method)
+    # when true, a recompute will be invoked the next time the model is referenced
     def dirty?
       @spline == nil
     end
 
-
+    # returns the cumulative distribution function cdf(x) for the distribution model
     def cdf(x)
       recompute if dirty?
 
@@ -116,6 +135,7 @@ module Capricious
     end
 
 
+    # returns the density function pdf(x) for the distrubtion model
     def pdf(x)
       recompute if dirty?
 
@@ -133,6 +153,8 @@ module Capricious
     end
 
 
+    # returns the interval of support for the distribution.
+    # +/- Float::INFINITY may be returned for infinite support on left or right tails
     def support
       recompute if dirty?
       lb, ub = @spline.domain
@@ -141,7 +163,7 @@ module Capricious
       [lb, ub]
     end
 
-
+    # recompute the distribution model from the current raw data
     def recompute
       return if not dirty?
 
