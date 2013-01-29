@@ -234,7 +234,12 @@ module Capricious
       @m[0] = d[0]
       @m[n-1] = d[n-2]
       1.upto(n-2) do |j|
-        @m[j] = (d[j-1]+d[j])/2.0
+        # @m[j] = (d[j-1]+d[j])/2.0
+        # this weighted version performs a bit better on non-uniform spacings:
+        # it favors the secant that is closest
+        h1 = @x[j]-@x[j-1]
+        h = @x[j+1]-@x[j]
+        @m[j] = (h*d[j-1] + h1*d[j])/(h1+h)
       end
 
       # avoid instability from dividing by very small numbers
