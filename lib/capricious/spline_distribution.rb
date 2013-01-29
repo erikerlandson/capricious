@@ -152,6 +152,15 @@ module Capricious
       @spline.qp(x)
     end
 
+    def mean
+      recompute if dirty?
+      @mean
+    end
+ 
+    def variance
+      recompute if dirty?
+      @variance
+    end
 
     # returns the interval of support for the distribution.
     # +/- Float::INFINITY may be returned for infinite support on left or right tails
@@ -249,6 +258,9 @@ module Capricious
       # cache the valid range of the spline
       @smin, @smax = @spline.domain
 
+      # compute mean and variance, once we have all model parameters
+      compute_moments
+
       nil
     end
 
@@ -303,13 +315,24 @@ module Capricious
       # assumes sorted data
       r = []
       return r if data.length < 1
+      ro = 0
+      n0 = data.length
+      if data.length > 100 then
+        # Extreme values sampled from tailed distributions 
+        # seem to yield curves that bias the variance higher.
+        # As a heuristic, this appears to help.  It would be nice
+        # to work out something formalized, parameterized, etc
+        ro = 1 + (Math.sqrt(n0)/30.0).to_i
+        data = data[ro...(-ro)]
+      end
+      n = data.length
       # the extra 1.0 here accounts for unsampled mass
       # e.g. I don't want my last sample S to be assessed as cdf(S) = 1.0
       # because we assume some kind of unsampled mass at tails
-      z = 1.0 + data.length.to_f
+      z = 1.0 + n0.to_f
       vcur = data.first
       qcur = 0.0
-      c = 0
+      c = ro
       data.each do |v|
         q = c.to_f / z
         if v != vcur then
@@ -323,6 +346,59 @@ module Capricious
       end
       r << [vcur, c.to_f / z]
     end
+
+    # these computations based on Hermite spline formulas
+    def compute_moments
+      x = @spline.x
+      y = @spline.y
+      m = @spline.m
+      n = x.length
+      xl, xu = @spline.domain
+      
+      # E[X] and E[X^2]
+      ex = 0.0
+      ex2 = 0.0
+
+      0.upto(n-2) do |j|
+        # transform x on interval [x[j],x[j+1]] to t on interval [0,1] for cleaner piecewise integrals
+        h = x[j+1]-x[j]
+        g = x[j]
+        h2 = h**2
+        g2 = g**2
+
+        # pdf is the gradient, y', of the Hermite spline, which is a quadratic in 't' over [0,1]
+        # the coefficients (a,b,c) are taken from the four Hermite basis functions of y'
+        a = ( 6.0*y[j] + 3.0*h*m[j] - 6.0*y[j+1] + 3.0*h*m[j+1])/h
+        b = (-6.0*y[j] - 4.0*h*m[j] + 6.0*y[j+1] - 2.0*h*m[j+1])/h
+        c = (            1.0*h*m[j]                            )/h
+
+        # integrals for x*pdf(x) and x^2*pdf(x) for this piece of the spline, transformed into 't' space over [0,1]
+        ex += h*(a*h/4.0 + (a*g + b*h)/3.0 + (b*g + c*h)/2.0 + c*g)
+        ex2 += h*(a*h2/5.0 + (b*h2 + 2.0*a*g*h)/4.0 + (c*h2 + 2.0*b*g*h + a*g2)/3.0 + (2.0*c*g*h + b*g2)/2.0 + c*g2)
+      end
+
+      # if either tail was configured for infinite support, we also include those pieces of the integrals
+      if @cdf_lb == INFINITE then
+        a = @exp_lb_a
+        b = @exp_lb_b
+        ex += (xl - 1.0/a)*Math.exp(a*xl + b)
+        ex2 += (xl**2 - 2.0*xl/a + 2.0/a**2)*Math.exp(a*xl + b)
+      end
+      if @cdf_ub == INFINITE then
+        a = @exp_ub_a
+        b = @exp_ub_b
+        ex += (xu + 1.0/a)*Math.exp(b - a*xu)
+        ex2 += (xu**2 + 2.0*xu/a + 2.0/a**2)*Math.exp(b - a*xu)
+      end
+
+      # Var[X] = E[X^2] - (E[X])^2
+      @mean = ex
+      @variance = ex2 - ex**2
+      # this has been known to happen due to numeric jitter in the computations
+      @variance = 0.0 if (@variance < 0.0)
+    end
+
+      
   end
 
 end
