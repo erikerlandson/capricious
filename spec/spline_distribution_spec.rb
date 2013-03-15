@@ -38,19 +38,19 @@ module Capricious
       sd = Capricious::SplineDistribution.new
 
       # default initial state
-      sd.configuration.should == {:data => nil, :cdf_lb => SplineDistribution::SPLINE, :cdf_ub => SplineDistribution::SPLINE, :cdf_smooth_lb => false, :cdf_smooth_ub => false, :cdf_quantile => 0.05}
+      sd.configuration.should == {:data => nil, :cdf_lb => SplineDistribution::DATA, :cdf_ub => SplineDistribution::DATA, :cdf_smooth_lb => false, :cdf_smooth_ub => false, :cdf_quantile => 0.05}
       sd.data.should == []
       sd.dirty?.should == true
 
       # configuration should not alter data (long as :data not given)
-      sd.configure(:cdf_lb => -Float::INFINITY)
-      sd.configuration.should == {:data => nil, :cdf_lb => -Float::INFINITY, :cdf_ub => SplineDistribution::SPLINE, :cdf_smooth_lb => false, :cdf_smooth_ub => false, :cdf_quantile => 0.05}
+      sd.configure(:cdf_lb => -1e6)
+      sd.configuration.should == {:data => nil, :cdf_lb => -1e6, :cdf_ub => SplineDistribution::DATA, :cdf_smooth_lb => false, :cdf_smooth_ub => false, :cdf_quantile => 0.05}
       sd.data.should == []
       sd.dirty?.should == true
       
       # adding data should show up, not alter config
       sd << 0
-      sd.configuration.should == {:data => nil, :cdf_lb => -Float::INFINITY, :cdf_ub => SplineDistribution::SPLINE, :cdf_smooth_lb => false, :cdf_smooth_ub => false, :cdf_quantile => 0.05}
+      sd.configuration.should == {:data => nil, :cdf_lb => -1e6, :cdf_ub => SplineDistribution::DATA, :cdf_smooth_lb => false, :cdf_smooth_ub => false, :cdf_quantile => 0.05}
       sd.data.should == [0.0]
       sd.dirty?.should == true
       
@@ -81,14 +81,14 @@ module Capricious
       
       # clear should remove data, but not change config
       sd.clear
-      sd.configuration.should == {:data => nil, :cdf_lb => -Float::INFINITY, :cdf_ub => SplineDistribution::SPLINE, :cdf_smooth_lb => false, :cdf_smooth_ub => false, :cdf_quantile => 0.05}
+      sd.configuration.should == {:data => nil, :cdf_lb => -1e6, :cdf_ub => SplineDistribution::DATA, :cdf_smooth_lb => false, :cdf_smooth_ub => false, :cdf_quantile => 0.05}
       sd.data.should == []
       sd.dirty?.should == true
 
       # reset clears data and resets config
       sd << 42
       sd.reset
-      sd.configuration.should == {:data => nil, :cdf_lb => SplineDistribution::SPLINE, :cdf_ub => SplineDistribution::SPLINE, :cdf_smooth_lb => false, :cdf_smooth_ub => false, :cdf_quantile => 0.05}
+      sd.configuration.should == {:data => nil, :cdf_lb => SplineDistribution::DATA, :cdf_ub => SplineDistribution::DATA, :cdf_smooth_lb => false, :cdf_smooth_ub => false, :cdf_quantile => 0.05}
       sd.data.should == []
       sd.dirty?.should == true
     end
@@ -98,7 +98,7 @@ module Capricious
       rv = Capricious::Uniform.new
       sd = Capricious::SplineDistribution.new
       sd.configure(:cdf_quantile => 0.2)
-      25000.times { sd << rv.next }
+      200000.times { sd << rv.next }
 
       # check valid cdf/pdf behavior
       check_pdf_cdf(sd, -1.0, 2.0)
@@ -123,8 +123,8 @@ module Capricious
       rv = Capricious::Normal.new(0.0, 1.0)
       sd = Capricious::SplineDistribution.new
       # request inifinite support
-      sd.configure(:cdf_lb => -Float::INFINITY, :cdf_ub=> Float::INFINITY, :cdf_quantile => 0.01)
-      50000.times { sd << rv.next }
+      sd.configure(:cdf_quantile => 0.01)
+      200000.times { sd << rv.next }
 
       # check valid cdf/pdf behavior
       sl, su = sd.spline.domain
@@ -140,15 +140,16 @@ module Capricious
         x += 0.01
       end
 
-      sd.support.should == [-Float::INFINITY, Float::INFINITY]
+      sd.support.should == sd.spline.domain
 
       # examine behavior around spline domain endpoints
       # continuity of y and y' should be obeyed at the boundary of
       # spline and exponential tails
       check_continuity(sd, :cdf, sl)
       check_continuity(sd, :cdf, su)
-      check_continuity(sd, :pdf, sl)
-      check_continuity(sd, :pdf, su)
+      # these not guaranteed to be smooth unless smooth endpoints requested
+      #check_continuity(sd, :pdf, sl)
+      #check_continuity(sd, :pdf, su)
 
       sd.mean.should be_close(0.0, 0.02)
       # variances are biased a bit high by the current algorithm,
@@ -162,7 +163,7 @@ module Capricious
       sd = Capricious::SplineDistribution.new
       # request inifinite support
       sd.configure(:cdf_smooth_lb => true, :cdf_smooth_ub => true, :cdf_quantile => 0.01)
-      50000.times { sd << rv.next }
+      200000.times { sd << rv.next }
 
       # check valid cdf/pdf behavior
       sl, su = sd.spline.domain
@@ -186,9 +187,10 @@ module Capricious
 
       # examine behavior around spline domain endpoints
       # continuity of y and y' should be obeyed at the boundary of
-      # spline and exponential tails
+      # the spline
       check_continuity(sd, :cdf, sl)
       check_continuity(sd, :cdf, su)
+      # these should also be continuous due to smooth endpoint request
       check_continuity(sd, :pdf, sl)
       check_continuity(sd, :pdf, su)
 
@@ -201,12 +203,12 @@ module Capricious
     it "should reconstruct an exponential distribution" do
       rv = Capricious::Exponential.new(1.0, nil, MWC5, true)
       sd = Capricious::SplineDistribution.new
-      # request one-sided infinite support
-      sd.configure(:cdf_ub=> Float::INFINITY, :cdf_quantile => 0.01)
+      sd.configure(:cdf_quantile => 0.001, :cdf_smooth_ub => true)
+
       n = 0
       sx = 0.0
       sxx = 0.0
-      50000.times do
+      500000.times do
         x = rv.next
         sd << x
         n += 1
@@ -218,10 +220,10 @@ module Capricious
       sl, su = sd.spline.domain
       check_pdf_cdf(sd, sl-0.1, su+0.1)
 
-      sd.support.should == [sl, Float::INFINITY]
+      sd.support.should == [sl, su]
       sl.should be_close(0.0, 0.01)
 
-      x = sl
+      x = sl + 0.05
       while x <= su+0.1
         f = Math.exp(-x)
         sd.pdf(x).should be_close(f, 0.1)
@@ -233,9 +235,9 @@ module Capricious
       # spline and exponential tails
       check_continuity(sd, :cdf, sl)
       check_continuity(sd, :cdf, su)
-      # pdf of an exponential distribution is not continuous on left end
+      # we did not request smooth endpoints here
       #check_continuity(sd, :pdf, sl)
-      check_continuity(sd, :pdf, su)
+      #check_continuity(sd, :pdf, su)
 
       sd.mean.should be_close(1.0, 0.02)
       # variances are biased a bit high by the current algorithm,

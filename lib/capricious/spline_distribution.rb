@@ -21,11 +21,7 @@ require 'capricious/cubic_hermite_spline'
 module Capricious
 
   class SplineDistribution
-    # assign cdf lower or upper bounds with a 1st pass spline
-    SPLINE = 'spline'
-    # use an exponential tail to get infinite lower or upper bound for cdf
-    INFINITE = 'inf'
-
+    DATA = 'data'
 
     def initialize(args={})
       reset
@@ -35,7 +31,7 @@ module Capricious
 
     # clears data and model.  resets configuration to factory default
     def reset
-      @args = {:data => nil, :cdf_lb => SPLINE, :cdf_ub => SPLINE, :cdf_smooth_lb => false, :cdf_smooth_ub => false, :cdf_quantile => 0.05}
+      @args = {:data => nil, :cdf_lb => DATA, :cdf_ub => DATA, :cdf_smooth_lb => false, :cdf_smooth_ub => false, :cdf_quantile => 0.05}
       clear
     end
 
@@ -123,11 +119,9 @@ module Capricious
       recompute if dirty?
 
       if x < @smin then
-        return Math.exp(x*@exp_lb_a + @exp_lb_b) if @cdf_lb == INFINITE
         return 0.0
       end
       if x > @smax then
-        return 1.0 - Math.exp(@exp_ub_b - x*@exp_ub_a) if @cdf_ub == INFINITE
         return 1.0
       end
 
@@ -141,11 +135,9 @@ module Capricious
 
       # pdf is 1st derivative of the cdf
       if x < @smin then
-        return @exp_lb_a * Math.exp(x*@exp_lb_a + @exp_lb_b) if @cdf_lb == INFINITE
         return 0.0
       end
       if x > @smax then
-        return @exp_ub_a * Math.exp(@exp_ub_b - x*@exp_ub_a) if @cdf_ub == INFINITE
         return 0.0
       end
 
@@ -167,8 +159,6 @@ module Capricious
     def support
       recompute if dirty?
       lb, ub = @spline.domain
-      lb = -Float::INFINITY if @cdf_lb == INFINITE
-      ub = Float::INFINITY if @cdf_ub == INFINITE
       [lb, ub]
     end
 
@@ -176,84 +166,37 @@ module Capricious
     def recompute
       return if not dirty?
 
-      raw = @data
+      raw = @data.clone
+      raise ArgumentError, "insufficient data" if raw.length < 2
+      n0 = raw.length
 
-      # if specific bounds were provided, data needs to be
-      # strictly inside those bounds
-      # make non-interior data an (optional) exception in future?
-      raw.select!{|x| x > @cdf_lb} if @cdf_lb.class <= Float
-      raw.select!{|x| x < @cdf_ub} if @cdf_ub.class <= Float
+      cdf_lb = @cdf_lb
+      cdf_ub = @cdf_ub
+      cdf_lb = raw.min if cdf_lb == DATA
+      cdf_ub = raw.max if cdf_ub == DATA
 
-      raise ArgumentError, "insufficient data, require >= 2 points" if raw.length < 2
+      raw.select!{|x| x > cdf_lb}
+      n1 = raw.length
+      raw.select!{|x| x < cdf_ub}
+      n2 = raw.length
+
+      raise ArgumentError, "insufficient data" if raw.length < 2
 
       # get a cdf, sampled at the requested resolution
       raw.sort!
-      scdf = sampled_cdf(raw)
+      scdf = sampled_cdf(raw, n0-n1, n1-n2)
+      scdf << [cdf_lb, 0.0]
+      scdf << [cdf_ub, 1.0]
+      scdf.sort!
 
       @spline = Capricious::CubicHermiteSpline.new(:data => scdf, :gradient_method => CubicHermiteSpline::WEIGHTED_SECANT, :monotonic => CubicHermiteSpline::NONSTRICT)
 
-      # if specific bounds were provided, insert them here
       gfix = {}
-      if @cdf_lb.class <= Float then
-        @spline << [@cdf_lb, 0.0]
-        gfix[@cdf_lb] = 0.0 if @cdf_smooth_lb
-      end
-      if @cdf_ub.class <= Float then
-        @spline << [@cdf_ub, 1.0]
-        gfix[@cdf_ub] = 0.0 if @cdf_smooth_ub
-      end
-      @spline.configure(:fixed_gradients => gfix)
+      gfix[cdf_lb] = 0.0 if @cdf_smooth_lb
+      gfix[cdf_ub] = 0.0 if @cdf_smooth_ub
 
+      @spline.configure(:fixed_gradients => gfix) if gfix.size > 0
       @spline.recompute
-
-      # handle cases where cdf bounds are SPLINE, INFINITE
-      respline = false
-      case @cdf_lb
-        when SPLINE
-          x, u = @spline.domain
-          y = @spline.q(x)
-          yp = @spline.qp(x)
-          raise "Logic error: yp= %f" % [yp] if yp <= 0.0
-          b = (x*yp - y) / yp
-          raise "Logic error: b= %f" % [b] if b >= x
-          @spline << [b, 0.0]
-          gfix[b] = 0.0 if @cdf_smooth_lb
-          respline = true
-        when INFINITE
-          x, u = @spline.domain
-          y = @spline.q(x)
-          yp = @spline.qp(x)
-          raise "Logic error: y= %f" % [y] if y <= 0.0
-          @exp_lb_a = yp/y
-          raise "Logic error: a= %f" % [@exp_lb_a] if @exp_lb_a <= 0.0
-          @exp_lb_b = Math.log(y) - yp*x/y
-      end
-      case @cdf_ub
-        when SPLINE
-          u, x = @spline.domain
-          y = @spline.q(x)
-          yp = @spline.qp(x)
-          raise "Logic error: yp= %f" % [yp] if yp <= 0.0
-          b = (1.0 + x*yp - y) / yp
-          raise "Logic error: b= %f" % [b] if b <= x
-          @spline << [b, 1.0]
-          gfix[b] = 0.0 if @cdf_smooth_ub
-          respline = true
-        when INFINITE
-          u, x = @spline.domain
-          y = @spline.q(x)
-          yp = @spline.qp(x)
-          raise "Logic error: y= %f" % [y] if y >= 1.0
-          @exp_ub_a = yp/(1.0-y)
-          raise "Logic error: a= %f" % [@exp_ub_a] if @exp_ub_a <= 0.0
-          @exp_ub_b = Math.log(1.0-y) + yp*x/(1.0-y)
-      end
-
-      # respline the cdf, if needed
-      if respline then
-          @spline.configure(:fixed_gradients => gfix)
-          @spline.recompute
-      end
 
       # cache the valid range of the spline
       @smin, @smax = @spline.domain
@@ -296,44 +239,28 @@ module Capricious
     end
 
     def checkba(v, lower)
-       inf = Float::INFINITY
-       inf = -inf if lower
        case
-         when [SPLINE, INFINITE].include?(v)
+         when [DATA].include?(v)
            return v
-         when v == inf
-           # internally, cleaner to store this as non-numeric constant to keep it
-           # easier to distringuish from "normal" finite Float values
-           return INFINITE
-         when (v.class <= Numeric and v != Float::NAN)
+         when (v.class <= Numeric and v != Float::NAN  and v != Float::INFINITY)
            return v.to_f
          else
-           raise ArgumentError, "bounds argument expects SplineDistribution::SPLINE, SplineDistribution::INFINITE, (+/-)Float::INFINITY, or numeric value"
+           raise ArgumentError, "bounds argument expects SplineDistribution::DATA, or numeric value"
        end
     end
 
-    def sampled_cdf(data)
+    def sampled_cdf(data, lmass, umass)
       # assumes sorted data
       r = []
       return r if data.length < 1
-      ro = 0
-      n0 = data.length
-      if data.length > 100 then
-        # Extreme values sampled from tailed distributions 
-        # seem to yield curves that bias the variance higher.
-        # As a heuristic, this appears to help.  It would be nice
-        # to work out something formalized, parameterized, etc
-        ro = 1 + (Math.sqrt(n0)/30.0).to_i
-        data = data[ro...(-ro)]
-      end
       n = data.length
       # the extra 1.0 here accounts for unsampled mass
       # e.g. I don't want my last sample S to be assessed as cdf(S) = 1.0
       # because we assume some kind of unsampled mass at tails
-      z = 1.0 + n0.to_f
+      z = (1 + lmass + umass + n).to_f
       vcur = data.first
-      qcur = 0.0
-      c = ro
+      qcur = @cdf_quantile
+      c = 1+lmass
       data.each do |v|
         q = c.to_f / z
         if v != vcur then
@@ -345,7 +272,7 @@ module Capricious
         end
         c += 1
       end
-      r << [vcur, c.to_f / z]
+      r
     end
 
     # these computations based on Hermite spline formulas
@@ -376,20 +303,6 @@ module Capricious
         # integrals for x*pdf(x) and x^2*pdf(x) for this piece of the spline, transformed into 't' space over [0,1]
         ex += h*(a*h/4.0 + (a*g + b*h)/3.0 + (b*g + c*h)/2.0 + c*g)
         ex2 += h*(a*h2/5.0 + (b*h2 + 2.0*a*g*h)/4.0 + (c*h2 + 2.0*b*g*h + a*g2)/3.0 + (2.0*c*g*h + b*g2)/2.0 + c*g2)
-      end
-
-      # if either tail was configured for infinite support, we also include those pieces of the integrals
-      if @cdf_lb == INFINITE then
-        a = @exp_lb_a
-        b = @exp_lb_b
-        ex += (xl - 1.0/a)*Math.exp(a*xl + b)
-        ex2 += (xl**2 - 2.0*xl/a + 2.0/a**2)*Math.exp(a*xl + b)
-      end
-      if @cdf_ub == INFINITE then
-        a = @exp_ub_a
-        b = @exp_ub_b
-        ex += (xu + 1.0/a)*Math.exp(b - a*xu)
-        ex2 += (xu**2 + 2.0*xu/a + 2.0/a**2)*Math.exp(b - a*xu)
       end
 
       # Var[X] = E[X^2] - (E[X])^2
